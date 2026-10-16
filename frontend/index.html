@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Maze Lab</title>
+
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+    <main class="app">
+
+        <header>
+            <h1>Maze Lab</h1>
+            <p>Generate a maze and compare how different algorithms solve it.</p>
+        </header>
+
+        <section class="controls">
+
+            <div class="field">
+                <label for="size-input">Maze size (5 - 101)</label>
+                <input id="size-input" type="number" min="5" max="101" step="2" value="31">
+            </div>
+
+            <div class="field">
+                <label for="algorithm-select">Algorithm</label>
+                <select id="algorithm-select">
+                    <option value="linear">Sequential Search</option>
+                    <option value="greedy">Greedy Search</option>
+                    <option value="selection_sort">Selection Sort + Greedy</option>
+                    <option value="insertion_sort">Insertion Sort + Greedy</option>
+                    <option value="bubble_sort">Bubble Sort + Greedy</option>
+                    <option value="shell_sort">Shell Sort + Greedy</option>
+                    <option value="quick_sort">Quick Sort + Greedy</option>
+                </select>
+
+            </div>
+
+            <div class="actions">
+                <button id="generate-btn" class="secondary">New maze</button>
+                <button id="solve-btn" class="primary">Solve</button>
+                <button id="compare-btn" class="secondary">Compare all</button>
+            </div>
+
+        </section>
+
+        <p id="status" aria-live="polite">Ready</p>
+
+        <div class="board">
+            <canvas id="maze"></canvas>
+        </div>
+
+        <div class="legend">
+            <span><i class="start"></i> Start</span>
+            <span><i class="end"></i> End</span>
+            <span><i class="wall"></i> Wall</span>
+            <span><i class="explored"></i> Explored</span>
+            <span><i class="solution"></i> Path</span>
+        </div>
+
+        <table id="compare-table" hidden>
+            <thead>
+                <tr>
+                    <th>Algorithm</th>
+                    <th>Path length</th>
+                    <th>Cells explored</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+
+    </main>
+
+    <script src="/static/script.js"></script>
+
+</body>
+
+</html>
