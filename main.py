@@ -1,104 +1,32 @@
 from pathlib import Path
-
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-
 from maze_generator import gen_maze, is_solvable
 from maze_solver import ALGORITHMS, solve_maze
 
-
 BASE_DIR = Path(__file__).resolve().parent
-FRONTEND_DIR = BASE_DIR / "frontend"
-
-MIN_SIZE = 5
-MAX_SIZE = 101
-
 app = FastAPI(title="Maze Lab")
-
-app.mount(
-    "/static",
-    StaticFiles(directory=str(FRONTEND_DIR)),
-    name="static",
-)
-
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "frontend")), name="static")
 
 @app.get("/")
-def home():
-    return FileResponse(str(FRONTEND_DIR / "index.html"))
-
+def home(): return FileResponse(str(BASE_DIR / "frontend" / "index.html"))
 
 @app.get("/maze/generate")
 def generate_maze(rows: int = 31, cols: int = 31):
-    if not (MIN_SIZE <= rows <= MAX_SIZE and MIN_SIZE <= cols <= MAX_SIZE):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Rows and columns must be between {MIN_SIZE} and {MAX_SIZE}.",
-        )
-
+    if not (5 <= rows <= 101 and 5 <= cols <= 101):
+        raise HTTPException(400, "Rows and columns must be between 5 and 101.")
     maze = gen_maze(rows, cols)
-
-    if not is_solvable(maze):
-        raise HTTPException(
-            status_code=500,
-            detail="The generated maze is not solvable.",
-        )
-
-    # gen_maze rounds even sizes up to odd, so report the real dimensions.
-    return {
-        "maze": maze,
-        "rows": len(maze),
-        "cols": len(maze[0]),
-    }
-
+    if not is_solvable(maze): raise HTTPException(500, "The generated maze is not solvable.")
+    return {"maze": maze, "rows": len(maze), "cols": len(maze[0])}
 
 @app.post("/maze/solve")
 def solve_current_maze(data: dict):
-    maze = data.get("maze")
-    algorithm = data.get("algorithm", "linear")
-
-    if algorithm not in ALGORITHMS:
-        raise HTTPException(status_code=400, detail="Invalid algorithm.")
-
-    if (
-        not isinstance(maze, list)
-        or not maze
-        or not isinstance(maze[0], list)
-        or not maze[0]
-    ):
-        raise HTTPException(status_code=400, detail="Invalid maze.")
-
-    rows = len(maze)
+    maze, algorithm = data.get("maze"), data.get("algorithm", "linear")
+    if algorithm not in ALGORITHMS or not isinstance(maze, list) or not maze or not isinstance(maze[0], list):
+        raise HTTPException(400, "Invalid algorithm or maze.")
     cols = len(maze[0])
-
-    if (
-        not (MIN_SIZE <= rows <= MAX_SIZE and MIN_SIZE <= cols <= MAX_SIZE)
-        or any(not isinstance(row, list) or len(row) != cols for row in maze)
-        or any(
-            type(cell) is not int or cell not in (0, 1)
-            for row in maze
-            for cell in row
-        )
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail="Maze dimensions or cell values are invalid.",
-        )
-
+    if not (5 <= len(maze) <= 101 and 5 <= cols <= 101) or any(not isinstance(row, list) or len(row) != cols for row in maze) or any(type(cell) is not int or cell not in (0, 1) for row in maze for cell in row):
+        raise HTTPException(400, "Maze dimensions or cell values are invalid.")
     solution, explored = solve_maze(maze, algorithm)
-
-    if solution is None:
-        return {
-            "algorithm": algorithm,
-            "solution": None,
-            "explored": explored,
-            "message": "No solution found.",
-        }
-
-    return {
-        "algorithm": algorithm,
-        "solution": solution,
-        "explored": explored,
-        "path_length": len(solution),
-        "explored_count": len(explored),
-    }
+    return {"algorithm": algorithm, "solution": solution, "explored": explored, "path_length": len(solution) if solution else 0, "explored_count": len(explored), "message": "No solution found." if solution is None else ""}

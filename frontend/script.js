@@ -1,282 +1,307 @@
-const canvas = document.getElementById("maze");
-const ctx = canvas.getContext("2d");
+(() => {
+  "use strict";
 
-const generateButton = document.getElementById("generate-btn");
-const solveButton = document.getElementById("solve-btn");
-const compareButton = document.getElementById("compare-btn");
-const algorithmSelect = document.getElementById("algorithm-select");
-const sizeInput = document.getElementById("size-input");
+  const $ = (id) => document.getElementById(id);
 
-const MIN_SIZE = 5;
-const MAX_SIZE = 101;
-const statusElement = document.getElementById("status");
-const compareTable = document.getElementById("compare-table");
-const compareBody = compareTable.querySelector("tbody");
+  const canvas = $("maze");
+  const ctx = canvas.getContext("2d");
+  const generateButton = $("generate-btn");
+  const solveButton = $("solve-btn");
+  const compareButton = $("compare-btn");
+  const algorithmSelect = $("algorithm-select");
+  const algorithmHelp = $("algorithm-help");
+  const sizeInput = $("size-input");
+  const sizeDisplay = $("size-display");
+  const dimensionMeta = $("dimension-meta");
+  const statusElement = $("status");
+  const statusPill = statusElement.closest(".status");
+  const results = $("results");
+  const compareBody = document.querySelector("#compare-table tbody");
+  const modeSwitch = document.querySelector(".mode-switch");
+  const modeButtons = Array.from(document.querySelectorAll(".mode"));
 
-const COLORS = {
-    wall: "#1f2937",
-    path: "#ffffff",
-    explored: "#bfdbfe",
-    solution: "#f59e0b",
-    start: "#16a34a",
-    end: "#dc2626",
-};
+  const MIN_SIZE = 5;
+  const MAX_SIZE = 101;
+  const DEFAULT_SIZE = 31;
 
-const CANVAS_PIXELS = 960;
+  const modes = {
+    classic: {
+      label: "Classic Lab",
+      help: "Uses the original neighbor-ordering strategies.",
+      items: [
+        ["sequential", "Sequential Search"],
+        ["linear", "Linear Search"],
+        ["bubble_sort", "Bubble Sort + Greedy"],
+        ["insertion_sort", "Insertion Sort + Greedy"],
+        ["selection_sort", "Selection Sort + Greedy"],
+        ["quick_sort", "Quick Sort + Greedy"],
+        ["shell_sort", "Shell Sort + Greedy"],
+      ],
+    },
+    graph: {
+      label: "Graph Lab",
+      help: "Weighted grid graph algorithms with animated exploration.",
+      items: [
+        ["bfs", "Breadth-First Search"],
+        ["dfs", "Depth-First Search"],
+        ["dijkstra", "Dijkstra’s Algorithm"],
+        ["a_star", "A* Search"],
+        ["bellman_ford", "Bellman–Ford"],
+      ],
+    },
+  };
 
-let currentMaze = [];
-let cellSize = 10;
-let isBusy = false;
+  const css = getComputedStyle(document.documentElement);
+  const token = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+  const colors = {
+    wall: token("--wall", "#1b2440"),
+    path: token("--cell", "#ffffff"),
+    explored: token("--explored", "#b8d7ff"),
+    solution: token("--solution", "#ffb547"),
+    start: token("--start", "#22a06b"),
+    end: token("--end", "#e5486a"),
+  };
 
+  let mode = "classic";
+  let maze = [];
+  let cellSize = 10;
+  let busy = false;
 
-function setBusy(busy) {
-    isBusy = busy;
+  /* ---------- UI helpers ---------- */
 
-    for (const control of [
-        generateButton,
-        solveButton,
-        compareButton,
-        algorithmSelect,
-        sizeInput,
-    ]) {
-        control.disabled = busy;
-    }
-}
-
-
-function updateStatus(message) {
+  function updateStatus(message, state = "idle") {
     statusElement.textContent = message;
-}
+    statusPill.dataset.state = state;
+  }
 
+  function updateDimensions(rows, cols) {
+    sizeDisplay.textContent = cols;
+    dimensionMeta.textContent = `${rows} × ${cols}`;
+  }
 
-function algorithmLabel(value) {
-    return algorithmSelect.querySelector(`option[value="${value}"]`).textContent;
-}
-
-
-async function request(url, options) {
-    const response = await fetch(url, options);
-
-    if (!response.ok) {
-        throw new Error(`Request failed (${response.status})`);
-    }
-
-    return response.json();
-}
-
-
-function solveRequest(algorithm) {
-    return request("/maze/solve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ maze: currentMaze, algorithm }),
+  function setBusy(value) {
+    busy = value;
+    [generateButton, solveButton, compareButton, algorithmSelect, sizeInput, ...modeButtons].forEach((el) => {
+      el.disabled = value;
     });
-}
+    canvas.setAttribute("aria-busy", String(value));
+  }
 
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+  }
 
-// Drawing
+  function clampSize(value) {
+    let size = parseInt(value, 10);
+    if (!Number.isFinite(size)) size = DEFAULT_SIZE;
+    return Math.min(MAX_SIZE, Math.max(MIN_SIZE, size));
+  }
 
-function fillCell(r, c, color) {
+  /* ---------- Mode switching ---------- */
+
+  function setMode(next, { focus = false } = {}) {
+    if (busy || !modes[next]) return;
+    mode = next;
+    modeSwitch.dataset.active = mode;
+    modeButtons.forEach((button) => {
+      const active = button.dataset.mode === mode;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+      button.tabIndex = active ? 0 : -1;
+      if (active && focus) button.focus();
+    });
+    algorithmSelect.innerHTML = modes[mode].items
+      .map(([value, label]) => `<option value="${value}">${escapeHtml(label)}</option>`)
+      .join("");
+    algorithmHelp.textContent = modes[mode].help;
+    results.hidden = true;
+    updateStatus(`${modes[mode].label} ready`);
+  }
+
+  modeButtons.forEach((button, index) => {
+    button.addEventListener("click", () => setMode(button.dataset.mode));
+    button.addEventListener("keydown", (event) => {
+      let target = null;
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") target = modeButtons[(index + 1) % modeButtons.length];
+      else if (event.key === "ArrowLeft" || event.key === "ArrowUp") target = modeButtons[(index - 1 + modeButtons.length) % modeButtons.length];
+      else if (event.key === "Home") target = modeButtons[0];
+      else if (event.key === "End") target = modeButtons[modeButtons.length - 1];
+      if (target) {
+        event.preventDefault();
+        setMode(target.dataset.mode, { focus: true });
+      }
+    });
+  });
+
+  /* ---------- API ---------- */
+
+  async function request(url, options) {
+    const response = await fetch(url, options);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  }
+
+  function solveRequest(algorithm) {
+    return request("/maze/solve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ maze, algorithm }),
+    });
+  }
+
+  /* ---------- Canvas ---------- */
+
+  function fill(r, c, color) {
     ctx.fillStyle = color;
     ctx.fillRect(c * cellSize, r * cellSize, cellSize, cellSize);
-}
+  }
 
+  function drawEnds() {
+    if (!maze.length) return;
+    fill(0, 0, colors.start);
+    fill(maze.length - 1, maze[0].length - 1, colors.end);
+  }
 
-function drawEnds() {
-    fillCell(0, 0, COLORS.start);
-    fillCell(currentMaze.length - 1, currentMaze[0].length - 1, COLORS.end);
-}
-
-
-function drawMaze() {
-    const rows = currentMaze.length;
-    const cols = currentMaze[0].length;
-
-    cellSize = Math.max(2, Math.floor(CANVAS_PIXELS / cols));
+  function draw() {
+    if (!maze.length) return;
+    const rows = maze.length;
+    const cols = maze[0].length;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cellSize = Math.max(2, Math.floor((960 * dpr) / Math.max(rows, cols)));
     canvas.width = cols * cellSize;
     canvas.height = rows * cellSize;
-
+    canvas.style.aspectRatio = `${cols} / ${rows}`;
     for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            fillCell(r, c, currentMaze[r][c] === 1 ? COLORS.wall : COLORS.path);
-        }
+      for (let c = 0; c < cols; c++) fill(r, c, maze[r][c] ? colors.wall : colors.path);
     }
-
     drawEnds();
-}
+  }
 
-
-// Paint cells a batch at a time so the search can be watched.
-function paint(cells, color, frames) {
+  function paint(cells, color, frames) {
     return new Promise((resolve) => {
-        const perFrame = Math.max(1, Math.ceil(cells.length / frames));
-        let i = 0;
-
-        function step() {
-            const stop = Math.min(i + perFrame, cells.length);
-
-            for (; i < stop; i++) {
-                fillCell(cells[i][0], cells[i][1], color);
-            }
-
-            drawEnds();
-
-            if (i < cells.length) {
-                requestAnimationFrame(step);
-            } else {
-                resolve();
-            }
-        }
-
-        step();
+      if (!Array.isArray(cells) || !cells.length) {
+        resolve();
+        return;
+      }
+      const step = Math.max(1, Math.ceil(cells.length / frames));
+      let i = 0;
+      function tick() {
+        for (const stop = Math.min(i + step, cells.length); i < stop; i++) fill(cells[i][0], cells[i][1], color);
+        drawEnds();
+        if (i < cells.length) requestAnimationFrame(tick);
+        else resolve();
+      }
+      tick();
     });
-}
+  }
 
+  /* ---------- Actions ---------- */
 
-// Actions
-
-async function generateMaze() {
-    if (isBusy) return;
-
+  async function generateMaze() {
+    if (busy) return;
     setBusy(true);
-    compareTable.hidden = true;
-
+    results.hidden = true;
     try {
-        updateStatus("Generating maze...");
-
-        // Clamp whatever was typed into the allowed range.
-        let size = parseInt(sizeInput.value, 10);
-
-        if (Number.isNaN(size)) size = 31;
-        size = Math.min(MAX_SIZE, Math.max(MIN_SIZE, size));
-
-        const data = await request(`/maze/generate?rows=${size}&cols=${size}`);
-
-        currentMaze = data.maze;
-        sizeInput.value = data.rows;
-        drawMaze();
-
-        updateStatus(
-            `${data.rows} x ${data.cols} maze ready. Pick an algorithm and press Solve.`
-        );
-
+      updateStatus("Generating a fresh maze…", "busy");
+      const size = clampSize(sizeInput.value);
+      const data = await request(`/maze/generate?rows=${size}&cols=${size}`);
+      maze = data.maze;
+      sizeInput.value = data.rows;
+      updateDimensions(data.rows, data.cols);
+      draw();
+      updateStatus(`${data.rows} × ${data.cols} maze ready — choose an algorithm.`, "success");
     } catch (error) {
-        console.error(error);
-        updateStatus("Could not generate maze. Check the backend.");
-
+      updateStatus("Could not generate maze. Check the backend.", "error");
     } finally {
-        setBusy(false);
+      setBusy(false);
     }
-}
+  }
 
-
-async function solveMaze() {
-    if (isBusy) return;
-
-    if (currentMaze.length === 0) {
-        updateStatus("Generate a maze first.");
+  async function solveMaze() {
+    if (busy) return;
+    if (!maze.length) {
+      updateStatus("Generate a maze first.", "error");
+      return;
+    }
+    setBusy(true);
+    try {
+      const algorithm = algorithmSelect.value;
+      const label = algorithmSelect.selectedOptions[0].text;
+      draw();
+      updateStatus(`${label}: exploring the maze…`, "busy");
+      const data = await solveRequest(algorithm);
+      await paint(data.explored, colors.explored, 90);
+      if (!data.solution) {
+        updateStatus(data.message || "No solution found.", "error");
         return;
-    }
-
-    setBusy(true);
-
-    try {
-        const algorithm = algorithmSelect.value;
-
-        drawMaze();
-        updateStatus("Solving...");
-
-        const data = await solveRequest(algorithm);
-
-        await paint(data.explored, COLORS.explored, 90);
-
-        if (!data.solution) {
-            updateStatus(data.message || "No solution found.");
-            return;
-        }
-
-        await paint(data.solution, COLORS.solution, 40);
-
-        updateStatus(
-            `${algorithmLabel(algorithm)}: path of ${data.path_length} cells, ` +
-            `${data.explored_count} cells explored.`
-        );
-
+      }
+      updateStatus(`${label}: tracing the path…`, "busy");
+      await paint(data.solution, colors.solution, 40);
+      updateStatus(`${label}: ${data.path_length} cells in the path, ${data.explored_count} explored.`, "success");
     } catch (error) {
-        console.error(error);
-        updateStatus("Could not solve maze. Check the backend.");
-
+      updateStatus("Could not solve maze. Check the backend.", "error");
     } finally {
-        setBusy(false);
+      setBusy(false);
     }
-}
+  }
 
-
-async function compareAll() {
-    if (isBusy) return;
-
-    if (currentMaze.length === 0) {
-        updateStatus("Generate a maze first.");
-        return;
+  async function compareAll() {
+    if (busy) return;
+    if (!maze.length) {
+      updateStatus("Generate a maze first.", "error");
+      return;
     }
-
     setBusy(true);
-
     try {
-        drawMaze();
-        updateStatus("Running all algorithms...");
-
-        const results = [];
-
-        for (const option of algorithmSelect.options) {
-            const data = await solveRequest(option.value);
-
-            results.push({
-                name: option.textContent,
-                pathLength: data.path_length,
-                explored: data.explored_count,
-            });
-        }
-
-        const bestPath = Math.min(...results.map((r) => r.pathLength));
-        const bestExplored = Math.min(...results.map((r) => r.explored));
-
-        compareBody.innerHTML = "";
-
-        for (const result of results) {
-            const row = compareBody.insertRow();
-
-            row.insertCell().textContent = result.name;
-
-            const pathCell = row.insertCell();
-            pathCell.textContent = result.pathLength;
-            if (result.pathLength === bestPath) pathCell.classList.add("best");
-
-            const exploredCell = row.insertCell();
-            exploredCell.textContent = result.explored;
-            if (result.explored === bestExplored) exploredCell.classList.add("best");
-        }
-
-        compareTable.hidden = false;
-        updateStatus("Lowest values in each column are highlighted.");
-
+      draw();
+      const options = Array.from(algorithmSelect.options);
+      const current = algorithmSelect.value;
+      const out = [];
+      for (const [index, option] of options.entries()) {
+        updateStatus(`Benchmarking ${index + 1} of ${options.length}: ${option.textContent}…`, "busy");
+        const data = await solveRequest(option.value);
+        out.push({ value: option.value, name: option.textContent, path: data.path_length, explored: data.explored_count });
+      }
+      const valid = (n) => typeof n === "number" && Number.isFinite(n);
+      const paths = out.map((x) => x.path).filter(valid);
+      const explored = out.map((x) => x.explored).filter(valid);
+      const minPath = paths.length ? Math.min(...paths) : null;
+      const minExplored = explored.length ? Math.min(...explored) : null;
+      const cell = (n, best) => `<td class="num${n === best ? " best" : ""}">${valid(n) ? n : "—"}</td>`;
+      compareBody.innerHTML = out
+        .map((x) => `<tr${x.value === current ? ' class="current"' : ""}><td>${escapeHtml(x.name)}</td>${cell(x.path, minPath)}${cell(x.explored, minExplored)}</tr>`)
+        .join("");
+      results.hidden = false;
+      results.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "nearest" });
+      updateStatus("Comparison complete — best values are highlighted.", "success");
     } catch (error) {
-        console.error(error);
-        updateStatus("Could not compare algorithms. Check the backend.");
-
+      updateStatus("Could not compare algorithms. Check the backend.", "error");
     } finally {
-        setBusy(false);
+      setBusy(false);
     }
-}
+  }
 
+  /* ---------- Wiring ---------- */
 
-generateButton.addEventListener("click", generateMaze);
-solveButton.addEventListener("click", solveMaze);
-compareButton.addEventListener("click", compareAll);
-sizeInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") generateMaze();
-});
+  generateButton.addEventListener("click", generateMaze);
+  solveButton.addEventListener("click", solveMaze);
+  compareButton.addEventListener("click", compareAll);
+  sizeInput.addEventListener("input", () => {
+    sizeDisplay.textContent = sizeInput.value || DEFAULT_SIZE;
+  });
+  sizeInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      generateMaze();
+    }
+  });
+  sizeInput.addEventListener("blur", () => {
+    if (!busy) {
+      sizeInput.value = clampSize(sizeInput.value);
+      sizeDisplay.textContent = sizeInput.value;
+    }
+  });
 
-
-// Generate the initial maze
-generateMaze();
+  setMode("classic");
+  generateMaze();
+})();

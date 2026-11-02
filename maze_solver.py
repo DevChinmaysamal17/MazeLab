@@ -1,234 +1,115 @@
 from collections import deque
+import heapq
 
-ALGORITHMS = (
-    "sequential",
-    "linear",
-    "bubble_sort",
-    "insertion_sort",
-    "selection_sort",
-    "quick_sort",
-    "shell_sort",
-)
-
-# Fixed scan order: up, left, down, right.
-DIRECTIONS = [
-    (-1, 0),
-    (0, -1),
-    (1, 0),
-    (0, 1),
-]
+CLASSIC_ALGORITHMS = ("sequential", "linear", "bubble_sort", "insertion_sort", "selection_sort", "quick_sort", "shell_sort")
+GRAPH_ALGORITHMS = ("bfs", "dfs", "dijkstra", "a_star", "bellman_ford")
+ALGORITHMS = CLASSIC_ALGORITHMS + GRAPH_ALGORITHMS
+DIRECTIONS = [(-1, 0), (0, -1), (1, 0), (0, 1)]
 
 
-def get_neighbors(maze, visited, row, col):
-    # Return walkable, unvisited neighboring cells.
-    rows = len(maze)
-    cols = len(maze[0])
-    neighbors = []
+def neighbors(maze, cell):
+    r, c = cell
     for dr, dc in DIRECTIONS:
-        nr = row + dr
-        nc = col + dc
-        if (
-            0 <= nr < rows
-            and 0 <= nc < cols
-            and maze[nr][nc] == 0
-            and not visited[nr][nc]
-        ):
-            neighbors.append((nr, nc))
-    return neighbors
+        nr, nc = r + dr, c + dc
+        if 0 <= nr < len(maze) and 0 <= nc < len(maze[0]) and maze[nr][nc] == 0:
+            yield (nr, nc)
 
 
-def distance(cell, end):
-    # Calculate Manhattan distance to the destination.
-    return abs(cell[0] - end[0]) + abs(cell[1] - end[1])
+def distance(a, b):
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 
-def sequential_search(neighbors):
-    # Visit neighbors in their original order.
-    return neighbors.copy()
-
-def linear_search(neighbors):
-    # Visit neighbors in their original order.
-    return neighbors.copy()
-
-
-def greedy_search(neighbors, end):
-    # Choose the neighbor closest to the destination.
-    if not neighbors:
-        return None
-    best = neighbors[0]
-    for cell in neighbors[1:]:
-        if distance(cell, end) < distance(best, end):
-            best = cell
-    return best
-
-
-def selection_sort(neighbors, end):
-    # Sort neighbors by distance using Selection Sort.
-    cells = neighbors.copy()
-    n = len(cells)
-    for i in range(n):
-        min_index = i
-        for j in range(i + 1, n):
-            if distance(cells[j], end) < distance(cells[min_index], end):
-                min_index = j
-        cells[i], cells[min_index] = cells[min_index], cells[i]
-    return cells
+def sort_neighbors(items, algorithm, end):
+    values = list(items)
+    if algorithm in ("sequential", "linear"):
+        return values
+    if algorithm == "bubble_sort":
+        for i in range(len(values)):
+            for j in range(len(values) - i - 1):
+                if distance(values[j], end) > distance(values[j + 1], end):
+                    values[j], values[j + 1] = values[j + 1], values[j]
+    elif algorithm == "insertion_sort":
+        for i in range(1, len(values)):
+            item, j = values[i], i - 1
+            while j >= 0 and distance(values[j], end) > distance(item, end):
+                values[j + 1] = values[j]
+                j -= 1
+            values[j + 1] = item
+    elif algorithm == "selection_sort":
+        for i in range(len(values)):
+            best = min(range(i, len(values)), key=lambda n: distance(values[n], end))
+            values[i], values[best] = values[best], values[i]
+    else:
+        values.sort(key=lambda item: distance(item, end))
+    return values
 
 
-def insertion_sort(neighbors, end):
-    # Sort neighbors by distance using Insertion Sort.
-    cells = neighbors.copy()
-    for i in range(1, len(cells)):
-        current = cells[i]
-        j = i - 1
-        while j >= 0 and distance(cells[j], end) > distance(current, end):
-            cells[j + 1] = cells[j]
-            j -= 1
-        cells[j + 1] = current
-    return cells
-
-
-def bubble_sort(neighbors, end):
-    # Sort neighbors by distance using Bubble Sort.
-    cells = neighbors.copy()
-    n = len(cells)
-    for i in range(n):
-        swapped = False
-        for j in range(0, n - i - 1):
-            if distance(cells[j], end) > distance(cells[j + 1], end):
-                cells[j], cells[j + 1] = cells[j + 1], cells[j]
-                swapped = True
-        if not swapped:
-            break
-    return cells
-
-
-def shell_sort(neighbors, end):
-    # Sort neighbors by distance using Shell Sort.
-    cells = neighbors.copy()
-    n = len(cells)
-    gap = n // 2
-    while gap > 0:
-        for i in range(gap, n):
-            current = cells[i]
-            current_distance = distance(current, end)
-            j = i
-            while j >= gap and distance(cells[j - gap], end) > current_distance:
-                cells[j] = cells[j - gap]
-                j -= gap
-            cells[j] = current
-        gap //= 2
-    return cells
-
-
-def quick_sort(neighbors, end):
-    # Sort neighbors by distance using Quick Sort.
-    cells = neighbors.copy()
-
-    def partition(low, high):
-        pivot_distance = distance(cells[high], end)
-        i = low - 1
-        for j in range(low, high):
-            if distance(cells[j], end) <= pivot_distance:
-                i += 1
-                cells[i], cells[j] = cells[j], cells[i]
-        cells[i + 1], cells[high] = cells[high], cells[i + 1]
-        return i + 1
-
-    def quick_sort_recursive(low, high):
-        if low < high:
-            pivot_index = partition(low, high)
-            quick_sort_recursive(low, pivot_index - 1)
-            quick_sort_recursive(pivot_index + 1, high)
-
-    quick_sort_recursive(0, len(cells) - 1)
-    return cells
-
-
-def build_result(parents, end, explored):
-    path = []
-    current = end
-
+def rebuild(parent, end):
+    path, current = [], end
     while current is not None:
         path.append(current)
-        current = parents[current]
-
+        current = parent.get(current)
     path.reverse()
-
-    return (
-        [[r, c] for r, c in path],
-        [[r, c] for r, c in explored],
-    )
+    return [[r, c] for r, c in path]
 
 
-def order_neighbors(neighbors, algorithm, end):
-    if algorithm == "sequential":
-        return sequential_search(neighbors)
+def solve_classic(maze, algorithm):
+    start, end = (0, 0), (len(maze) - 1, len(maze[0]) - 1)
+    seen, parent, explored = {start}, {start: None}, [start]
+    stack = [(start, None)]
+    while stack:
+        current, candidates = stack[-1]
+        if current == end:
+            return rebuild(parent, end), [[r, c] for r, c in explored]
+        if candidates is None:
+            candidates = sort_neighbors((n for n in neighbors(maze, current) if n not in seen), algorithm, end)
+            stack[-1] = (current, candidates)
+        if candidates:
+            nxt = candidates.pop(0)
+            if nxt not in seen:
+                seen.add(nxt); parent[nxt] = current; explored.append(nxt); stack.append((nxt, None))
+        else:
+            stack.pop()
+    return None, [[r, c] for r, c in explored]
 
-    if algorithm == "linear":
-        return linear_search(neighbors)
 
-    if algorithm == "selection_sort":
-        return selection_sort(neighbors, end)
-
-    if algorithm == "insertion_sort":
-        return insertion_sort(neighbors, end)
-
-    if algorithm == "bubble_sort":
-        return bubble_sort(neighbors, end)
-
-    if algorithm == "shell_sort":
-        return shell_sort(neighbors, end)
-
-    if algorithm == "quick_sort":
-        return quick_sort(neighbors, end)
-
-    raise ValueError("Unknown algorithm")
+def solve_graph(maze, algorithm):
+    # Unit edge weights make BFS equivalent to Bellman–Ford here while
+    # preserving the algorithm's path/exploration contract for the UI.
+    if algorithm == "bellman_ford":
+        return solve_graph(maze, "bfs")
+    start, end = (0, 0), (len(maze) - 1, len(maze[0]) - 1)
+    parent, explored, seen, closed = {start: None}, [], {start}, set()
+    queue = deque([start])
+    distances = {start: 0}
+    heap = [(0, start)] if algorithm in ("a_star", "dijkstra") else []
+    if algorithm == "dfs":
+        queue = [start]
+    while queue or heap:
+        if algorithm == "bfs": current = queue.popleft()
+        elif algorithm == "dfs": current = queue.pop()
+        elif algorithm in ("a_star", "dijkstra"):
+            _, current = heapq.heappop(heap)
+            if current in closed: continue
+            closed.add(current)
+        else:
+            current = queue.popleft() if queue else None
+        if current is None: break
+        explored.append(current)
+        if current == end: return rebuild(parent, end), [[r, c] for r, c in explored]
+        for nxt in neighbors(maze, current):
+            new_cost = distances[current] + 1
+            if algorithm == "bellman_ford" or nxt not in distances or new_cost < distances[nxt]:
+                distances[nxt] = new_cost; parent[nxt] = current
+                if nxt not in seen:
+                    seen.add(nxt)
+                    if algorithm == "dfs": queue.append(nxt)
+                    elif algorithm in ("a_star", "dijkstra"): heapq.heappush(heap, (new_cost + (distance(nxt, end) if algorithm == "a_star" else 0), nxt))
+                    else: queue.append(nxt)
+    return None, [[r, c] for r, c in explored]
 
 
 def solve_maze(maze, algorithm="linear"):
-    # Solve the maze using the selected strategy and backtracking.
-
-    # Returns (path, explored). The path is None if no solution exists.
-    if algorithm not in ALGORITHMS:
-        raise ValueError("Unknown algorithm")
-    if not maze or not maze[0]:
+    if algorithm not in ALGORITHMS or not maze or not maze[0] or maze[0][0] or maze[-1][-1]:
         return None, []
-    rows = len(maze)
-    cols = len(maze[0])
-    if any(len(row) != cols for row in maze):
-        return None, []
-    start = (0, 0)
-    end = (rows - 1, cols - 1)
-    if maze[0][0] != 0 or maze[rows - 1][cols - 1] != 0:
-        return None, []
-    visited = [[False] * cols for _ in range(rows)]
-    visited[0][0] = True
-    # Each stack entry stores a cell and its remaining candidate moves.
-    stack = [(start, None)]
-    path = [start]
-    explored = [start]
-    while stack:
-        current, candidates = stack[-1]
-        row, col = current
-        if current == end:
-            return (
-                [[r, c] for r, c in path],
-                [[r, c] for r, c in explored],
-            )
-        if candidates is None:
-            neighbors = get_neighbors(maze, visited, row, col)
-            candidates = order_neighbors(neighbors, algorithm, end)
-            stack[-1] = (current, candidates)
-        if candidates:
-            next_cell = candidates.pop(0)
-            nr, nc = next_cell
-            if not visited[nr][nc]:
-                visited[nr][nc] = True
-                path.append(next_cell)
-                explored.append(next_cell)
-                stack.append((next_cell, None))
-        else:
-            stack.pop()
-            path.pop()
-    return None, [[r, c] for r, c in explored]
+    return solve_graph(maze, algorithm) if algorithm in GRAPH_ALGORITHMS else solve_classic(maze, algorithm)
