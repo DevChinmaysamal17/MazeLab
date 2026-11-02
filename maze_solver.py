@@ -1,11 +1,13 @@
+from collections import deque
+
 ALGORITHMS = (
+    "sequential",
     "linear",
-    "greedy",
-    "selection_sort",
-    "insertion_sort",
     "bubble_sort",
-    "shell_sort",
+    "insertion_sort",
+    "selection_sort",
     "quick_sort",
+    "shell_sort",
 )
 
 # Fixed scan order: up, left, down, right.
@@ -41,10 +43,12 @@ def distance(cell, end):
 
 
 def sequential_search(neighbors):
-    # Return the first available neighbor.
-    if neighbors:
-        return neighbors[0]
-    return None
+    # Visit neighbors in their original order.
+    return neighbors.copy()
+
+def linear_search(neighbors):
+    # Visit neighbors in their original order.
+    return neighbors.copy()
 
 
 def greedy_search(neighbors, end):
@@ -141,25 +145,44 @@ def quick_sort(neighbors, end):
     return cells
 
 
+def build_result(parents, end, explored):
+    path = []
+    current = end
+
+    while current is not None:
+        path.append(current)
+        current = parents[current]
+
+    path.reverse()
+
+    return (
+        [[r, c] for r, c in path],
+        [[r, c] for r, c in explored],
+    )
+
+
 def order_neighbors(neighbors, algorithm, end):
-    # Order neighboring cells using the selected strategy.
+    if algorithm == "sequential":
+        return sequential_search(neighbors)
+
     if algorithm == "linear":
-        return neighbors.copy()
-    if algorithm == "greedy":
-        best = greedy_search(neighbors, end)
-        if best is None:
-            return []
-        return [best] + [cell for cell in neighbors if cell != best]
+        return linear_search(neighbors)
+
     if algorithm == "selection_sort":
         return selection_sort(neighbors, end)
+
     if algorithm == "insertion_sort":
         return insertion_sort(neighbors, end)
+
     if algorithm == "bubble_sort":
         return bubble_sort(neighbors, end)
+
     if algorithm == "shell_sort":
         return shell_sort(neighbors, end)
+
     if algorithm == "quick_sort":
         return quick_sort(neighbors, end)
+
     raise ValueError("Unknown algorithm")
 
 
@@ -167,7 +190,6 @@ def solve_maze(maze, algorithm="linear"):
     # Solve the maze using the selected strategy and backtracking.
 
     # Returns (path, explored). The path is None if no solution exists.
-    
     if algorithm not in ALGORITHMS:
         raise ValueError("Unknown algorithm")
     if not maze or not maze[0]:

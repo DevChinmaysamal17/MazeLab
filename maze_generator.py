@@ -6,13 +6,6 @@ PATH = 0
 
 
 def gen_maze(rows=31, cols=31, loop_chance=0.08):
-    """Generate a maze with a recursive backtracker, then punch extra openings.
-
-    Cells sit on even coordinates and the walls between them on odd ones, so
-    both dimensions are rounded up to an odd number. The backtracker gives
-    long winding corridors and many dead ends; the extra openings create loops,
-    so there is more than one route from start to end.
-    """
 
     if rows < 5 or cols < 5:
         raise ValueError("Rows and columns must be at least 5.")
@@ -54,7 +47,7 @@ def gen_maze(rows=31, cols=31, loop_chance=0.08):
 
 
 def is_solvable(maze):
-    """Check whether the destination is reachable from the start."""
+    # Check whether the destination is reachable from the start.
 
     if not maze or not maze[0]:
         return False
